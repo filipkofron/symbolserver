@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import math
+import os
 import struct
 import binascii
 import errs
@@ -172,6 +173,8 @@ class PDBFile:
         age  - PDB file's Age, as an integer
     """
     def __init__(self, f):
+        f.seek(0, os.SEEK_SET)
+
         # Check signature
         sig = f.read(len(SIGNATURE))
         if sig != SIGNATURE:

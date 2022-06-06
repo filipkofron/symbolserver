@@ -3,7 +3,6 @@ from __future__ import absolute_import
 import os
 import struct
 import errs
-import fileio
 
 PE_SIGNATURE = b"PE\0\0"
 PE_SIGNATURE_POINTER = 0x3C
@@ -65,32 +64,34 @@ class PEFile:
 
     * TimeDateStamp from file header
     * SizeOfImage from optional header
+    * Hash for symstore
 
     The values are accessed by reading the object's member variables by
     the same name, e.g.
 
-        PEFile("some.exe").TimeDateStamp
-
-    :raises symstore.FileNotFoundError: if specified file does not exist
+        PEFile(open("some.exe", "rb")).TimeDateStamp
     """
-    def __init__(self, filepath):
-        with fileio.open_rb(filepath) as f:
-            fsize = os.fstat(f.fileno()).st_size
+    def __init__(self, f):
+        f.seek(0, os.SEEK_END)
+        fsize = f.tell()
+        f.seek(0, os.SEEK_SET)
 
-            # load PE signature offset
-            pe_sig_offset = _read_u32(f, fsize, PE_SIGNATURE_POINTER)
+        # load PE signature offset
+        pe_sig_offset = _read_u32(f, fsize, PE_SIGNATURE_POINTER)
 
-            # check that file contains valid PE signature
-            f.seek(pe_sig_offset)
-            if f.read(4) != PE_SIGNATURE:
-                raise PEFormatError("PE signature not found")
+        # check that file contains valid PE signature
+        f.seek(pe_sig_offset)
+        if f.read(4) != PE_SIGNATURE:
+            raise PEFormatError("PE signature not found")
 
-            # load TimeDateStamp field
-            self.TimeDateStamp = \
-                _read_u32(f, fsize, pe_sig_offset+TIME_DATE_STAMP_OFFSET)
+        # load TimeDateStamp field
+        self.TimeDateStamp = \
+            _read_u32(f, fsize, pe_sig_offset+TIME_DATE_STAMP_OFFSET)
 
-            # load SizeOfImage field
-            self.SizeOfImage = _read_u32(f, fsize,
-                                         pe_sig_offset +
-                                         OPTIONAL_HEADER_OFFSET +
-                                         SIZE_OF_IMAGE_OFFSET)
+        # load SizeOfImage field
+        self.SizeOfImage = _read_u32(f, fsize,
+                                      pe_sig_offset +
+                                      OPTIONAL_HEADER_OFFSET +
+                                      SIZE_OF_IMAGE_OFFSET)
+
+        self.hash = "%X%X" % (self.TimeDateStamp, self.SizeOfImage)

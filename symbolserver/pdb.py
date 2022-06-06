@@ -3,8 +3,7 @@ from __future__ import absolute_import
 import math
 import struct
 import binascii
-from symstore import errs
-from symstore import fileio
+import errs
 
 SIGNATURE = b"Microsoft C/C++ MSF 7.00\r\n\x1ADS\0\0\0"
 
@@ -171,44 +170,51 @@ class PDBFile:
 
         guid - PDB file's GUID as an instance of GUID class
         age  - PDB file's Age, as an integer
-
-    :raises symstore.FileNotFoundError: if specified file does not exist
     """
-    def __init__(self, filepath):
-        with fileio.open_rb(filepath) as f:
+    def __init__(self, f):
+        # Check signature
+        sig = f.read(len(SIGNATURE))
+        if sig != SIGNATURE:
+            raise PDBFormatError("Invalid signature")
 
-            # Check signature
-            sig = f.read(len(SIGNATURE))
-            if sig != SIGNATURE:
-                raise PDBFormatError("Invalid signature")
+        # load page size and root stream definition
+        page_size, _, _, root_dir_size, _ = \
+            struct.unpack("<IIIII", f.read(4*5))
 
-            # load page size and root stream definition
-            page_size, _, _, root_dir_size, _ = \
-                struct.unpack("<IIIII", f.read(4*5))
+        # Create Root stream parser
+        root = Root(f, page_size, root_dir_size)
 
-            # Create Root stream parser
-            root = Root(f, page_size, root_dir_size)
+        # load the PDB stream page
+        pdb_stream_pages = root.stream_pages(1)
 
-            # load the PDB stream page
-            pdb_stream_pages = root.stream_pages(1)
+        # load GUID from PDB stream
+        f.seek(pdb_stream_pages[0]*page_size)
+        _, _, _, guid_d1, guid_d2, guid_d3, guid_d4 = \
+            struct.unpack("<IIIIHH8s", f.read(4*4 + 2 * 2 + 8))
 
-            # load GUID from PDB stream
-            f.seek(pdb_stream_pages[0]*page_size)
-            _, _, _, guid_d1, guid_d2, guid_d3, guid_d4 = \
-                struct.unpack("<IIIIHH8s", f.read(4*4 + 2 * 2 + 8))
+        # load age from the DBI information
+        # (PDB information age changes when using PDBSTR)
+        dbi_stream_pages = root.stream_pages(3)
+        if 0 < len(dbi_stream_pages):
+            f.seek(dbi_stream_pages[0]*page_size)
+            _, _, age = struct.unpack("<III", f.read(3*4))
+        else:
+            # vc140.pdb however, does not have this stream,
+            # so it does not have an age that can be used
+            # in the hash string
+            age = None
 
-            # load age from the DBI information
-            # (PDB information age changes when using PDBSTR)
-            dbi_stream_pages = root.stream_pages(3)
-            if 0 < len(dbi_stream_pages):
-                f.seek(dbi_stream_pages[0]*page_size)
-                _, _, age = struct.unpack("<III", f.read(3*4))
-            else:
-                # vc140.pdb however, does not have this stream,
-                # so it does not have an age that can be used
-                # in the hash string
-                age = None
+        # store GUID and age for user friendly retrieval
+        self.guid = GUID(guid_d1, guid_d2, guid_d3, guid_d4)
+        self.age = age
 
-            # store GUID and age for user friendly retrieval
-            self.guid = GUID(guid_d1, guid_d2, guid_d3, guid_d4)
-            self.age = age
+        # figure out age string to be used in the hash string
+        if self.age is None:
+            # some pdb files does not have age,
+            # accoring to symstore.exe we should just
+            # skip adding the age to the hash string
+            age_str = ""
+        else:
+            age_str = "%x" % self.age
+
+        self.hash = "%s%s" % (self.guid, age_str)

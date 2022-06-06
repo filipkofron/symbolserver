@@ -11,6 +11,7 @@
     <OutputPath>.</OutputPath>
     <Name>symbolserver</Name>
     <RootNamespace>symbolserver</RootNamespace>
+    <TestFramework>Pytest</TestFramework>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>

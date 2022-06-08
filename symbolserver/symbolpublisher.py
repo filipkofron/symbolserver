@@ -23,7 +23,6 @@
 import argparse
 from functools import partial
 from logging import DEBUG
-from symstore.symstore import PublishMode
 from typing import List, NamedTuple, Tuple
 from artifactory import ArtifactoryPath
 import asynctaskgraph as atg
@@ -33,7 +32,6 @@ import os
 import pickle
 import requests
 import shutil
-import symstore
 import tempfile
 from urllib.parse import urlparse
 import xml.etree.ElementTree as et
@@ -99,7 +97,7 @@ def copy_file_to_dest(name, opened_file, dest_path):
 def fetch_files_or_archive(path, dest_path, params: Params):
     """ Fetches the given symbol file path (str or convertible to it) to destination folder path, extracts files if it is a known archive. """
 
-    if is_excluded(path, excludes):
+    if is_excluded(path, params.excludes):
         return
 
     # Try http or fallback to os filesystem path
@@ -167,23 +165,25 @@ def publish_file(url, params: Params) -> None:
         if len(files) == 0:
             return
 
-        sym_store = symstore.Store(params.store_path)
-        transaction = sym_store.new_transaction("", "")
-        for file in files:
-            logging.info(f"Deploying {str(file)} to the symbol store")
-            src_url = str(url)
+        logging.error(f"TODO IMPLEMENT: Store symbols: {files}")
 
-            # If file is inside of a zip file, then we need to link a path to it
-            if is_supported_archive(url):
-                if not params.artifactory:
-                    logging.warn(f"Link mode for direct files only supported for artifactory. Check resulting url {url}")
-                relative_path = os.path.relpath(file, dirpath).replace("\\", "/").replace("//", "/")
-                src_url = str(url) + "!/" + relative_path
+        #sym_store = symstore.Store(params.store_path)
+        #transaction = sym_store.new_transaction("", "")
+        #for file in files:
+        #    logging.info(f"Deploying {str(file)} to the symbol store")
+        #    src_url = str(url)
+
+        #    # If file is inside of a zip file, then we need to link a path to it
+        #    if is_supported_archive(url):
+        #        if not params.artifactory:
+        #            logging.warn(f"Link mode for direct files only supported for artifactory. Check resulting url {url}")
+        #        relative_path = os.path.relpath(file, dirpath).replace("\\", "/").replace("//", "/")
+        #        src_url = str(url) + "!/" + relative_path
                 
-            transaction.add_file(file, PublishMode.Link if params.link_mode else PublishMode.Compressed, src_url)
+        #    transaction.add_file(file, PublishMode.Link if params.link_mode else PublishMode.Compressed, src_url)
 
-        with atg.Executor() as parallel_executor:
-            sym_store.commit(transaction, parallel_executor)
+        #with atg.Executor() as parallel_executor:
+        #    sym_store.commit(transaction, parallel_executor)
 
         logging.info(f"{len(files)} symbols committed.")
     except Exception as e:

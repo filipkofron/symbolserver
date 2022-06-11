@@ -1,24 +1,27 @@
-import os
-import shutil
-import tempfile
 from time import sleep
-from symboldb import test as symboldb_test
-from symbolhash import test as symbolhash_test
 from symbolpublisher import publish_file
 from symbolpublisher import Params
 from zipfile import ZipFile
 from testserver import start_server
+import fileio
+import httpio
+import os
+import shutil
+import symboldb
+import symbolhash
+import tempfile
+
 
 def prepare_and_get_test_data_dir() -> str:
     test_data_dir = tempfile.mkdtemp()
     try:
-        zip_file_path = '../testdata.zip'
+        zip_file_path = "../testdata.zip"
 
         # Copy the zip itself
-        shutil.copyfile(zip_file_path, os.path.join(test_data_dir, 'testdata.zip'))
+        shutil.copyfile(zip_file_path, os.path.join(test_data_dir, "testdata.zip"))
 
         # Unpack the zip contents as well
-        with ZipFile(zip_file_path, 'r') as test_data_zip:
+        with ZipFile(zip_file_path, "r") as test_data_zip:
             test_data_zip.extractall(test_data_dir)
 
     except Exception as e:
@@ -28,23 +31,79 @@ def prepare_and_get_test_data_dir() -> str:
 
     return test_data_dir
 
-if __name__ == '__main__':
-    symstore_dir = tempfile.mkdtemp()
-    test_data_dir = prepare_and_get_test_data_dir()
 
-    try:
-        symboldb_test()
-        symbolhash_test()
+def fill_test_data():
+    symboldb.store_symbol(
+        symboldb.Symbol("DEADBEEF", "poo.exe", "http://example.com/poo.exe", None)
+    )
+    symboldb.store_symbol(
+        symboldb.Symbol(
+            "FEEDBABE",
+            "foo.pd_",
+            "http://example.com/foo.exe",
+            "stored/FEEDBABE/foo.pd_",
+        )
+    )
+    symboldb.store_symbol(
+        symboldb.Symbol(
+            "FEEDBABE",
+            "foo.pd_",
+            "http://example.com/foo.pdb",
+            "stored/FEEDBABE/foo.pd_",
+        )
+    )
+    symboldb.store_symbol(
+        symboldb.Symbol("FEEDBABE", "boo.dll", None, "stored/FEEDBABE/boo.dll")
+    )
+    symboldb.store_source(symboldb.Source("C:\\foo.exe", False, 1))
+    symboldb.store_source(symboldb.Source("C:\\foo.pdb", False, 2))
+    symboldb.store_source(symboldb.Source("C:\\foo.pdb", True, 2))
+    symboldb.store_source(symboldb.Source("C:\\moo.exe", True, 0))
 
-        start_server(test_data_dir)
 
-        params = Params(symstore_dir, [], False, 1, True, False)
-        publish_file(os.path.join(test_data_dir, 'testdata', "HelloWorld.exe"), params)
+def hash_test(server_addr: str):
+    files_to_test = [
+        ('HelloWorld.exe',  '62A0EB958000'),
+        ('HelloWorld.pdb',  '59442B4112F54557AE800C736F2B5DAD1'),
+        ('HelloDll.dll',    '62A0EC129000'),
+        ('HelloDll.pdb',    '7BE215C28E704CFC85F579A7025B1C131')
+    ]
 
-    except Exception as e:
-        raise e
-    finally:
-        # Delete temporary files
-        shutil.rmtree(test_data_dir)
+    for file, hash in files_to_test:
+        path = server_addr + f'/testdata/{file}'
+        with httpio.open(path, 1024 * 1024 * 4) as f:
+            current_hash = symbolhash.hash(f)
+            assert(hash == current_hash)
+            print(f'{path}: {current_hash}')
 
-    exit(0)
+
+def test():
+    symboldb.init_db(":memory:")
+    fill_test_data()
+    print(symboldb.find_symbol("FEEdBABE", "foo.pd_"))
+    print(symboldb.dump())
+    pass
+
+
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory() as symstore_dir:
+        test_data_dir = prepare_and_get_test_data_dir()
+
+        try:
+            server_addr = start_server(test_data_dir)
+            test()
+            hash_test(server_addr)
+
+
+            params = Params(symstore_dir, [], False, 1, True, False)
+            publish_file(
+                os.path.join(test_data_dir, "testdata", "HelloWorld.exe"), params
+            )
+
+        except Exception as e:
+            raise e
+        finally:
+            # Delete temporary files
+            shutil.rmtree(test_data_dir)
+
+        exit(0)

@@ -29,16 +29,6 @@ class SourceModel(BaseModel):
         return str("path: " + str(self.path) + "  loaded: " + str(self.loaded)
                   + "  failure_count: " + str(self.failure_count))
 
-def fill_test_data():
-    store_symbol(Symbol('DEADBEEF', 'poo.exe', 'http://example.com/poo.exe', None))
-    store_symbol(Symbol('FEEDBABE', 'foo.pd_', 'http://example.com/foo.exe', 'stored/FEEDBABE/foo.pd_'))
-    store_symbol(Symbol('FEEDBABE', 'foo.pd_', 'http://example.com/foo.pdb', 'stored/FEEDBABE/foo.pd_'))
-    store_symbol(Symbol('FEEDBABE', 'boo.dll', None, 'stored/FEEDBABE/boo.dll'))
-    store_source(Source('C:\\foo.exe', False, 1))
-    store_source(Source('C:\\foo.pdb', False, 2))
-    store_source(Source('C:\\foo.pdb', True, 2))
-    store_source(Source('C:\\moo.exe', True, 0))
-
 def init_db(path: Path):
   global database_proxy
   database_proxy.initialize(peewee.SqliteDatabase(path))
@@ -99,10 +89,3 @@ def store_source(source: Source) -> None:
     path = source.path,
     loaded = source.stored,
     failure_count = source.failures)
-
-def test():
-  init_db(':memory:')
-  fill_test_data()
-  print(find_symbol('FEEdBABE', 'foo.pd_'))
-  print(dump())
-  pass

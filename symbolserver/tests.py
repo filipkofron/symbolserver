@@ -1,6 +1,4 @@
 from time import sleep
-from symbolpublisher import publish_file
-from symbolpublisher import Params
 from zipfile import ZipFile
 from testserver import start_server
 import fileio
@@ -9,6 +7,7 @@ import os
 import shutil
 import symboldb
 import symbolhash
+import symbolpublisher
 import tempfile
 
 
@@ -61,7 +60,7 @@ def fill_test_data():
     symboldb.store_source(symboldb.Source("C:\\moo.exe", True, 0))
 
 
-def hash_test(server_addr: str):
+def hash_test(server_addr: str, path_fs: str):
     files_to_test = [
         ('HelloWorld.exe',  '62A0EB958000'),
         ('HelloWorld.pdb',  '59442B4112F54557AE800C736F2B5DAD1'),
@@ -70,11 +69,17 @@ def hash_test(server_addr: str):
     ]
 
     for file, hash in files_to_test:
-        path = server_addr + f'/testdata/{file}'
-        with httpio.open(path, 1024 * 1024 * 4) as f:
+        http_path = server_addr + f'/testdata/{file}'
+        with httpio.open(http_path, 1024 * 1024 * 4) as f:
             current_hash = symbolhash.hash(f)
             assert(hash == current_hash)
-            print(f'{path}: {current_hash}')
+            print(f'{http_path}: {current_hash}')
+
+        disk_path = os.path.join(path_fs, 'testdata', file)
+        with fileio.open_rb(disk_path) as f:
+            current_hash = symbolhash.hash(f)
+            assert(hash == current_hash)
+            print(f'{disk_path}: {current_hash}')
 
 
 def test():
@@ -92,11 +97,11 @@ if __name__ == "__main__":
         try:
             server_addr = start_server(test_data_dir)
             test()
-            hash_test(server_addr)
+            hash_test(server_addr, test_data_dir)
 
 
-            params = Params(symstore_dir, [], False, 1, True, False)
-            publish_file(
+            params = symbolpublisher.Params(symstore_dir, [], False, 1, True, False)
+            symbolpublisher.publish_path(
                 os.path.join(test_data_dir, "testdata", "HelloWorld.exe"), params
             )
 

@@ -80,7 +80,7 @@ def copy_buffered_io_to_file(io, file):
             break
         file.write(buf) 
 
-def copy_zip_contents_to_dest(opened_file, dest_path, params: Params):
+def deploy_zip_contents(opened_file, dest_path, params: Params):
     with zipfile.ZipFile(opened_file) as zip_contents:
         for zip_info in zip_contents.infolist():
             if not zip_info.is_dir():
@@ -88,13 +88,13 @@ def copy_zip_contents_to_dest(opened_file, dest_path, params: Params):
                     logging.debug(f"Extracting {zip_info.filename} to {dest_path}")
                     zip_contents.extract(zip_info, dest_path)
 
-def copy_file_to_dest(name, opened_file, dest_path):
+def deploy_file(name, opened_file, dest_path):
     logging.debug(f"Copying {name} to {dest_path}")
 
     with open(dest_path + os.path.sep + name, 'wb') as output_file:
         copy_buffered_io_to_file(opened_file, output_file)
 
-def fetch_files_or_archive(path, dest_path, params: Params):
+def deploy_file_or_archive(path, dest_path, params: Params):
     """ Fetches the given symbol file path (str or convertible to it) to destination folder path, extracts files if it is a known archive. """
 
     if is_excluded(path, params.excludes):
@@ -105,22 +105,22 @@ def fetch_files_or_archive(path, dest_path, params: Params):
         # Check if archive and extract all files
         if is_supported_archive(path):
             with httpio.open(path, 1024 * 1024 * 4) as remote_file:
-                copy_zip_contents_to_dest(remote_file, dest_path, params)
+                deploy_zip_contents(remote_file, dest_path, params)
         # Check if a supported file
         elif is_symbol_dll_exe(path):
             with httpio.open(path, 1024 * 1024 * 4) as remote_file:
-                copy_file_to_dest(os.path.basename(urlparse(str(path)).path), remote_file, dest_path)
+                deploy_file(os.path.basename(urlparse(str(path)).path), remote_file, dest_path)
         else:
             raise Exception(f"Unsupported symbol file or archive of symbol files: {str(path)}")
     else:
         # Check if archive and extract all files
         if is_supported_archive(path):
             with open(path, "rb") as file:
-                copy_zip_contents_to_dest(file, dest_path, params)
+                deploy_zip_contents(file, dest_path, params)
         # Check if a supported file
         elif is_symbol_dll_exe(path):
             with open(path, "rb") as file:
-                copy_file_to_dest(os.path.basename(urlparse(str(path)).path), file, dest_path)
+                deploy_file(os.path.basename(urlparse(str(path)).path), file, dest_path)
         else:
             raise Exception(f"Unsupported symbol file or archive of symbol files: {str(path)}")
 
@@ -140,58 +140,23 @@ def find_latest_artifact_in_maven_metadata_xml(maven_path_xml):
 
     raise Exception("No artifact found")
 
-def fetch_files(path, dest_path, params: Params):
-    """ Fetches the given symbol file path or the latest symbol from maven repo metadata xml (str or convertible to it) to destination folder path, extracts files if it is a known archive. """
+def publish_path_or_maven_metadata(path, dest_path, params: Params):
 
-    if str(path).lower().endswith(".xml"):
-        fetch_files_or_archive(find_latest_artifact_in_maven_metadata_xml(path), dest_path, params)
-    else:
-        fetch_files_or_archive(path, dest_path, params)
+    actual_file_or_archive = find_latest_artifact_in_maven_metadata_xml(path) if str(path).lower().endswith(".xml") else path
+    deploy_file_or_archive(actual_file_or_archive, dest_path, params)
 
-def publish_file(url, params: Params) -> None:
+def publish_path(url, params: Params) -> None:
     """ Publishes a given symbol or archive of symbols and publishes it to the given symbol store path. """
 
     if is_excluded(url, params.excludes):
         return
 
-    # Create a temporary folder for downloaded files
-    dirpath = tempfile.mkdtemp()
-
     try:
-        # Download file(s)
-        fetch_files(url, dirpath, params)    
-        # Create a list of full paths
-        files = [os.path.join(dp, f) for dp, dn, filenames in os.walk(dirpath) for f in filenames]
-        if len(files) == 0:
-            return
-
-        logging.error(f"TODO IMPLEMENT: Store symbols: {files}")
-
-        #sym_store = symstore.Store(params.store_path)
-        #transaction = sym_store.new_transaction("", "")
-        #for file in files:
-        #    logging.info(f"Deploying {str(file)} to the symbol store")
-        #    src_url = str(url)
-
-        #    # If file is inside of a zip file, then we need to link a path to it
-        #    if is_supported_archive(url):
-        #        if not params.artifactory:
-        #            logging.warn(f"Link mode for direct files only supported for artifactory. Check resulting url {url}")
-        #        relative_path = os.path.relpath(file, dirpath).replace("\\", "/").replace("//", "/")
-        #        src_url = str(url) + "!/" + relative_path
-                
-        #    transaction.add_file(file, PublishMode.Link if params.link_mode else PublishMode.Compressed, src_url)
-
-        #with atg.Executor() as parallel_executor:
-        #    sym_store.commit(transaction, parallel_executor)
-
-        logging.info(f"{len(files)} symbols committed.")
+        publish_path_or_maven_metadata(url, params)    
     except Exception as e:
         raise e
-    finally:
-        # Delete temporary files
-        shutil.rmtree(dirpath)
 
+# TODO: Replace with source
 class ArtifactorySet:
     def __init__(self):
         self.version = 0
@@ -244,7 +209,7 @@ def artifactory_deploy_task(db: ArtifactoryDatabase, path: ArtifactoryPath, para
     if not present:
         logging.info(f"Trying to publish {str(path)}")
         try:
-            publish_file(path, params) # move params
+            publish_path(path, params) # move params
             db.get_set().set(path.parts)
             logging.info(f"Success {str(path)}")
             db.buffered_commit()
@@ -352,4 +317,4 @@ if __name__ == "__main__":
         publish_artifactory(args.arti, params)
 
     if args.file:
-        publish_file(args.file, params)
+        publish_path(args.file, params)

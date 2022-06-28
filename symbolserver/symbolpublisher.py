@@ -31,19 +31,19 @@ import logging
 import os
 import pickle
 import requests
-import shutil
-import tempfile
+import symboldb
+import symbolhash
 from urllib.parse import urlparse
 import xml.etree.ElementTree as et
 import zipfile
 
 class Params(NamedTuple):
-    store_path: str
     excludes: List[str]
     skip_last_errors: bool # Not implemented
     threads: int
     link_mode: bool # Stored symbol will be a link to the source location
     artifactory: bool
+    overwrite: bool
 
 def is_excluded(path, excludes: List[str]):
     path_forward_slashes = str(path).replace("\\", "/")
@@ -80,21 +80,40 @@ def copy_buffered_io_to_file(io, file):
             break
         file.write(buf) 
 
-def deploy_zip_contents(opened_file, dest_path, params: Params):
+def deploy_zip_contents(opened_file, params: Params):
     with zipfile.ZipFile(opened_file) as zip_contents:
         for zip_info in zip_contents.infolist():
             if not zip_info.is_dir():
                 if is_symbol_dll_exe(zip_info.filename) and not is_excluded(zip_info.filename, params.excludes):
-                    logging.debug(f"Extracting {zip_info.filename} to {dest_path}")
-                    zip_contents.extract(zip_info, dest_path)
+                    logging.debug(f"Deploying {zip_info.filename} from zip to DB")
+                    raise "Not implemented"
+                    #zip_contents.extract(zip_info, dest_path)
 
-def deploy_file(name, opened_file, dest_path):
-    logging.debug(f"Copying {name} to {dest_path}")
+def deploy_file(name, opened_file, params: Params):
+    logging.debug(f"Deploying {name} to DB")
 
-    with open(dest_path + os.path.sep + name, 'wb') as output_file:
-        copy_buffered_io_to_file(opened_file, output_file)
+    hash = symbolhash.hash(opened_file)
 
-def deploy_file_or_archive(path, dest_path, params: Params):
+    existing_symbol = symboldb.find_symbol(hash, name)
+    if existing_symbol and not params.overwrite
+        logging.info(f"{name}:{hash} already exists, skipping")
+        return
+
+    if existing_symbol and params.overwrite:
+        logging.info(f"{name}:{hash} already exists, overwriting")
+
+    logging.info(f"{name}:{hash} deploying..")
+
+    symbol = symboldb.Symbol(hash, filename, opened_file.name if params.link_mode else None, 
+
+    symboldb.store_symbol
+    
+    raise("Not implemented")
+
+    #with open(dest_path + os.path.sep + name, 'wb') as output_file:
+    #    copy_buffered_io_to_file(opened_file, output_file)
+
+def deploy_file_or_archive(path, params: Params):
     """ Fetches the given symbol file path (str or convertible to it) to destination folder path, extracts files if it is a known archive. """
 
     if is_excluded(path, params.excludes):
@@ -105,22 +124,22 @@ def deploy_file_or_archive(path, dest_path, params: Params):
         # Check if archive and extract all files
         if is_supported_archive(path):
             with httpio.open(path, 1024 * 1024 * 4) as remote_file:
-                deploy_zip_contents(remote_file, dest_path, params)
+                deploy_zip_contents(remote_file, params)
         # Check if a supported file
         elif is_symbol_dll_exe(path):
             with httpio.open(path, 1024 * 1024 * 4) as remote_file:
-                deploy_file(os.path.basename(urlparse(str(path)).path), remote_file, dest_path)
+                deploy_file(os.path.basename(urlparse(str(path)).path), remote_file, params)
         else:
             raise Exception(f"Unsupported symbol file or archive of symbol files: {str(path)}")
     else:
         # Check if archive and extract all files
         if is_supported_archive(path):
             with open(path, "rb") as file:
-                deploy_zip_contents(file, dest_path, params)
+                deploy_zip_contents(file, params)
         # Check if a supported file
         elif is_symbol_dll_exe(path):
             with open(path, "rb") as file:
-                deploy_file(os.path.basename(urlparse(str(path)).path), file, dest_path)
+                deploy_file(os.path.basename(urlparse(str(path)).path), file, params)
         else:
             raise Exception(f"Unsupported symbol file or archive of symbol files: {str(path)}")
 
@@ -140,10 +159,10 @@ def find_latest_artifact_in_maven_metadata_xml(maven_path_xml):
 
     raise Exception("No artifact found")
 
-def publish_path_or_maven_metadata(path, dest_path, params: Params):
+def publish_path_or_maven_metadata(path, params: Params):
 
     actual_file_or_archive = find_latest_artifact_in_maven_metadata_xml(path) if str(path).lower().endswith(".xml") else path
-    deploy_file_or_archive(actual_file_or_archive, dest_path, params)
+    deploy_file_or_archive(actual_file_or_archive, params)
 
 def publish_path(url, params: Params) -> None:
     """ Publishes a given symbol or archive of symbols and publishes it to the given symbol store path. """

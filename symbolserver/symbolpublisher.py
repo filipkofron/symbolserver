@@ -26,6 +26,7 @@ from logging import DEBUG
 from typing import List, NamedTuple, Tuple
 from artifactory import ArtifactoryPath
 import asynctaskgraph as atg
+import fileio
 import httpio
 import logging
 import os
@@ -39,6 +40,7 @@ import zipfile
 
 class Params(NamedTuple):
     excludes: List[str]
+    store_path: str
     skip_last_errors: bool # Not implemented
     threads: int
     link_mode: bool # Stored symbol will be a link to the source location
@@ -70,16 +72,6 @@ def is_symbol_dll_exe(path):
             return True
     return False
 
-def copy_buffered_io_to_file(io, file):
-    """ Copy the given BufferedIOBase to the given opened file """
-
-    bufsize: int = 256 * 1024
-    while True:
-        buf = io.read(bufsize)
-        if not buf:
-            break
-        file.write(buf) 
-
 def deploy_zip_contents(opened_file, params: Params):
     with zipfile.ZipFile(opened_file) as zip_contents:
         for zip_info in zip_contents.infolist():
@@ -95,7 +87,7 @@ def deploy_file(name, opened_file, params: Params):
     hash = symbolhash.hash(opened_file)
 
     existing_symbol = symboldb.find_symbol(hash, name)
-    if existing_symbol and not params.overwrite
+    if existing_symbol and not params.overwrite:
         logging.info(f"{name}:{hash} already exists, skipping")
         return
 
@@ -104,14 +96,15 @@ def deploy_file(name, opened_file, params: Params):
 
     logging.info(f"{name}:{hash} deploying..")
 
-    symbol = symboldb.Symbol(hash, filename, opened_file.name if params.link_mode else None, 
+    # TODO
+    store_path = params.store_path if not params.link_mode else None
+    link_path = opened_file.name if params.link_mode else None
+    symbol = symboldb.Symbol(hash, name, link_path, store_path)
 
-    symboldb.store_symbol
+    symboldb.store_symbol(symbol)
     
-    raise("Not implemented")
-
-    #with open(dest_path + os.path.sep + name, 'wb') as output_file:
-    #    copy_buffered_io_to_file(opened_file, output_file)
+    if not params.link_mode:
+        fileio.write_opened_file(opened_file, os.path.join(params.store_path, name))
 
 def deploy_file_or_archive(path, params: Params):
     """ Fetches the given symbol file path (str or convertible to it) to destination folder path, extracts files if it is a known archive. """

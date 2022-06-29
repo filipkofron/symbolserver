@@ -99,8 +99,8 @@ if __name__ == "__main__":
             test()
             hash_test(server_addr, test_data_dir)
 
-
-            params = symbolpublisher.Params([], False, 1, True, False)
+            link_mode = False
+            params = symbolpublisher.Params([], symstore_dir, False, 1, link_mode, False, False)
             symbolpublisher.publish_path(
                 os.path.join(test_data_dir, "testdata", "HelloWorld.exe"), params
             )

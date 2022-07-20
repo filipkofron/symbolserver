@@ -104,6 +104,12 @@ if __name__ == "__main__":
             symbolpublisher.publish_path(
                 os.path.join(test_data_dir, "testdata", "HelloWorld.exe"), params
             )
+            link_mode = True
+            params = symbolpublisher.Params([], symstore_dir, False, 1, link_mode, False, False)
+            symbolpublisher.publish_path(
+                os.path.join(test_data_dir, "testdata", "HelloDll.dll"), params
+            )
+            print(symboldb.dump())
 
         except Exception as e:
             raise e

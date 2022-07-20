@@ -96,15 +96,17 @@ def deploy_file(name, opened_file, params: Params):
 
     logging.info(f"{name}:{hash} deploying..")
 
+    full_store_path = os.path.join(params.store_path, name)
+
     # TODO
-    store_path = params.store_path if not params.link_mode else None
+    store_path = full_store_path if not params.link_mode else None
     link_path = opened_file.name if params.link_mode else None
     symbol = symboldb.Symbol(hash, name, link_path, store_path)
 
     symboldb.store_symbol(symbol)
     
     if not params.link_mode:
-        fileio.write_opened_file(opened_file, os.path.join(params.store_path, name))
+        fileio.write_opened_file(opened_file, full_store_path)
 
 def deploy_file_or_archive(path, params: Params):
     """ Fetches the given symbol file path (str or convertible to it) to destination folder path, extracts files if it is a known archive. """
